@@ -6,7 +6,4 @@ Initial release of convert_json
 
 **Features**
 
-- Javascript and Erlang targets
-- Converters for all basic types (except BitArray and tuple)
-- Define converters for List, Dict, Result & Option
-- Build decoders for custom objects and enums
+- Encode and decode to JSON.
