@@ -298,6 +298,18 @@ pub fn enum_encode_test() {
   )
 }
 
+pub fn bit_array_encode_test() {
+  <<"hello world":utf8>>
+  |> j.json_encode(c.bit_array())
+  |> should.equal(json.string("aGVsbG8gd29ybGQ="))
+}
+
+pub fn bit_array_decode_test() {
+  json.decode("\"aGVsbG8gd29ybGQ=\"", j.json_decode(c.bit_array()))
+  |> should.be_ok
+  |> should.equal(<<"hello world":utf8>>)
+}
+
 pub fn main() {
   gleeunit.main()
 }
