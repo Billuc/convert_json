@@ -1,4 +1,5 @@
 import convert as c
+import gleam/bit_array
 import gleam/dict
 import gleam/dynamic
 import gleam/json
@@ -58,6 +59,7 @@ pub fn encode_value(val: c.GlitrValue) -> json.Json {
         #("variant", json.string(variant)),
         #("value", encode_value(v)),
       ])
+    c.BitArrayValue(v) -> json.string(bit_array.base64_url_encode(v, True))
     _ -> json.null()
   }
 }
@@ -165,6 +167,15 @@ pub fn decode_value(
       )
 
       Ok(c.EnumValue(variant_name, variant_value))
+    }
+    c.BitArray -> fn(val) {
+      val
+      |> dynamic.string()
+      |> result.then(fn(v) {
+        bit_array.base64_url_decode(v)
+        |> result.replace_error([dynamic.DecodeError("Base64Url", v, [])])
+      })
+      |> result.map(c.BitArrayValue)
     }
     _ -> fn(_val) { Ok(c.NullValue) }
   }
