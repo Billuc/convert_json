@@ -1,4 +1,5 @@
 import convert as c
+import gleam/bit_array
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/json
@@ -58,6 +59,15 @@ pub fn encode_value(val: c.GlitrValue) -> json.Json {
         #("variant", json.string(variant)),
         #("value", encode_value(v)),
       ])
+    c.BitArrayValue(b) -> {
+      let size = bit_array.bit_size(b)
+      let b64 = bit_array.base64_url_encode(b, True)
+
+      json.object([
+        #("bit_length", json.int(size)),
+        #("base64", json.string(b64)),
+      ])
+    }
     _ -> json.null()
   }
 }
@@ -71,6 +81,7 @@ pub fn decode_value(of: c.GlitrType) -> decode.Decoder(c.GlitrValue) {
     c.Bool -> decode.map(decode.bool, c.BoolValue)
     c.Float -> decode.map(decode.float, c.FloatValue)
     c.Int -> decode.map(decode.int, c.IntValue)
+    c.BitArray -> decode_bit_array(c.BitArray)
     c.List(el) -> decode_list(el)
     c.Dict(k, v) -> decode_dict(k, v)
     c.Object(fs) -> decode_object(fs)
@@ -195,5 +206,26 @@ pub fn decode_enum(
           "Unknown enum variant: \"" <> variant_name <> "\"",
         )
     }
+  })
+}
+
+fn decode_bit_array(_b: c.GlitrType) -> decode.Decoder(c.GlitrValue) {
+  decode.field("bit_length", decode.int, fn(bit_len) {
+    decode.field("base64", decode.string, fn(b64_string) {
+      case bit_array.base64_url_decode(b64_string) {
+        Ok(bits) -> {
+          case bit_array.bit_size(bits) == bit_len {
+            True -> decode.success(c.BitArrayValue(bits))
+            False ->
+              decode.failure(
+                c.NullValue,
+                "BitArray: declared bit_length does not match actual data",
+              )
+          }
+        }
+
+        Error(_) -> decode.failure(c.NullValue, "BitArray: invalid base64")
+      }
+    })
   })
 }
