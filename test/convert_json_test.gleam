@@ -16,7 +16,7 @@ pub fn simple_object_decode_test() {
       c.success(TestType(a, b))
     })
 
-  json.decode("{\"a\": \"Age\", \"b\": 28}", j.json_decode(test_converter))
+  json.parse("{\"a\": \"Age\", \"b\": 28}", j.json_decode(test_converter))
   |> should.be_ok
   |> should.equal(TestType("Age", 28))
 }
