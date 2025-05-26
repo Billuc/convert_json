@@ -1,9 +1,6 @@
 import convert as c
 import convert/json as j
-import gleam/bit_array
-import gleam/io
 import gleam/json
-import gleam/result
 import gleeunit
 import gleeunit/should
 
