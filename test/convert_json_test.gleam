@@ -1,6 +1,9 @@
 import convert as c
 import convert/json as j
+import gleam/bit_array
+import gleam/io
 import gleam/json
+import gleam/result
 import gleeunit
 import gleeunit/should
 
@@ -60,15 +63,15 @@ pub fn complex_type_decode_test() {
       c.success(ComplexType(first:, second:))
     })
 
-  json.decode(
-    "{
+  json.parse(
+    from: "{
     \"first\": [\"hello\", \"World\"],
     \"second\": {
         \"a\": \"foo\",
         \"b\": 55
       }  
     }",
-    j.json_decode(test_converter),
+    using: j.json_decode(test_converter),
   )
   |> should.be_ok
   |> should.equal(ComplexType(["hello", "World"], TestType("foo", 55)))
@@ -179,32 +182,32 @@ pub fn enum_decode_test() {
       ],
     )
 
-  json.decode(
-    "{
+  json.parse(
+    from: "{
       \"variant\": \"VariantA\",
       \"value\": {\"msg\": \"foo\"}
     }",
-    j.json_decode(test_converter),
+    using: j.json_decode(test_converter),
   )
   |> should.be_ok
   |> should.equal(VariantA("foo"))
 
-  json.decode(
-    "{
+  json.parse(
+    from: "{
       \"variant\": \"VariantB\",
       \"value\": {\"msg\": \"bar\"}
     }",
-    j.json_decode(test_converter),
+    using: j.json_decode(test_converter),
   )
   |> should.be_ok
   |> should.equal(VariantB("bar"))
 
-  json.decode(
-    "{
+  json.parse(
+    from: "{
       \"variant\": \"VariantC\",
       \"value\": {\"age\": 21}
     }",
-    j.json_decode(test_converter),
+    using: j.json_decode(test_converter),
   )
   |> should.be_ok
   |> should.equal(VariantC(21))
@@ -301,11 +304,19 @@ pub fn enum_encode_test() {
 pub fn bit_array_encode_test() {
   <<"hello world":utf8>>
   |> j.json_encode(c.bit_array())
-  |> should.equal(json.string("aGVsbG8gd29ybGQ="))
+  |> should.equal(
+    json.object([
+      #("bit_length", json.int(88)),
+      #("base64", json.string("aGVsbG8gd29ybGQ=")),
+    ]),
+  )
 }
 
 pub fn bit_array_decode_test() {
-  json.decode("\"aGVsbG8gd29ybGQ=\"", j.json_decode(c.bit_array()))
+  json.parse(
+    from: "{\"bit_length\": 88, \"base64\": \"aGVsbG8gd29ybGQ=\"}",
+    using: j.json_decode(c.bit_array()),
+  )
   |> should.be_ok
   |> should.equal(<<"hello world":utf8>>)
 }
