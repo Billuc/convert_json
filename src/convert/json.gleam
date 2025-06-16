@@ -1,7 +1,7 @@
 import convert as c
 import gleam/bit_array
 import gleam/dict
-import gleam/dynamic
+import gleam/dynamic/decode
 import gleam/json
 import gleam/list
 import gleam/result
@@ -13,14 +13,35 @@ pub fn json_encode(value: a, converter: c.Converter(a)) -> json.Json {
   value |> c.encode(converter) |> encode_value
 }
 
-/// Decode a Json value using the provided converter.
+/// Decode a Json string using the provided converter.
 pub fn json_decode(
   converter: c.Converter(a),
-) -> fn(dynamic.Dynamic) -> Result(a, List(dynamic.DecodeError)) {
-  fn(value) {
-    value
-    |> decode_value(c.type_def(converter))
-    |> result.then(c.decode(converter))
+) -> fn(String) -> Result(a, json.DecodeError) {
+  let decoder = decoder(c.type_def(converter))
+
+  fn(value: String) {
+    use glitr_value <- result.try(
+      value
+      |> json.parse(decoder),
+    )
+
+    glitr_value |> c.decode(converter) |> result.map_error(json.UnableToDecode)
+  }
+}
+
+/// Decode a Json bit array using the provided converter.
+pub fn json_decode_bits(
+  converter: c.Converter(a),
+) -> fn(BitArray) -> Result(a, json.DecodeError) {
+  let decoder = decoder(c.type_def(converter))
+
+  fn(value: BitArray) {
+    use glitr_value <- result.try(
+      value
+      |> json.parse_bits(decoder),
+    )
+
+    glitr_value |> c.decode(converter) |> result.map_error(json.UnableToDecode)
   }
 }
 
@@ -33,6 +54,7 @@ pub fn encode_value(val: c.GlitrValue) -> json.Json {
     c.BoolValue(v) -> json.bool(v)
     c.FloatValue(v) -> json.float(v)
     c.IntValue(v) -> json.int(v)
+    c.BitArrayValue(v) -> json.string(bit_array.base64_url_encode(v, True))
     c.ListValue(vals) -> json.array(vals, encode_value)
     c.DictValue(v) ->
       json.array(v |> dict.to_list, fn(keyval) {
@@ -59,124 +81,91 @@ pub fn encode_value(val: c.GlitrValue) -> json.Json {
         #("variant", json.string(variant)),
         #("value", encode_value(v)),
       ])
-    c.BitArrayValue(v) -> json.string(bit_array.base64_url_encode(v, True))
     _ -> json.null()
   }
 }
 
-/// Decode a JSON value using the specified GlitrType as the shape of the data.  
-/// Returns the corresponding GlitrValue representation.
-/// This isn't meant to be used directly !
-pub fn decode_value(
-  of: c.GlitrType,
-) -> fn(dynamic.Dynamic) -> Result(c.GlitrValue, List(dynamic.DecodeError)) {
+/// Create a Gleam decoder for the provided GlitrType.
+/// This is not meant to be used directly !
+/// It is better to use converters.
+pub fn decoder(of: c.GlitrType) -> decode.Decoder(c.GlitrValue) {
   case of {
-    c.String -> fn(val) { val |> dynamic.string() |> result.map(c.StringValue) }
-    c.Bool -> fn(val) { val |> dynamic.bool() |> result.map(c.BoolValue) }
-    c.Float -> fn(val) { val |> dynamic.float() |> result.map(c.FloatValue) }
-    c.Int -> fn(val) { val |> dynamic.int() |> result.map(c.IntValue) }
-    c.List(el) -> fn(val) {
-      val
-      |> dynamic.list(dynamic.dynamic)
-      |> result.then(fn(val_list) {
-        list.fold(val_list, Ok([]), fn(result, list_el) {
-          case result, list_el |> decode_value(el) {
-            Ok(result_list), Ok(jval) -> Ok([jval, ..result_list])
-            Ok(_), Error(errs) | Error(errs), Ok(_) -> Error(errs)
-            Error(errs), Error(new_errs) -> Error(list.append(errs, new_errs))
-          }
-        })
-      })
-      |> result.map(list.reverse)
-      |> result.map(c.ListValue)
-    }
-    c.Dict(k, v) -> fn(val) {
-      val
-      |> dynamic.list(
-        of: dynamic.list(of: dynamic.any([decode_value(k), decode_value(v)])),
-      )
-      |> result.then(list.fold(
-        _,
-        Ok([]),
-        fn(result, el) {
-          case result, el {
-            Ok(vals), [first, second, ..] -> Ok([#(first, second), ..vals])
-            Ok(_), _ -> Error([dynamic.DecodeError("2 elements", "0 or 1", [])])
-            // TODO: better path
-            Error(errs), [_, _, ..] -> Error(errs)
-            Error(errs), _ ->
-              Error([dynamic.DecodeError("2 elements", "0 or 1", []), ..errs])
-          }
-        },
-      ))
-      |> result.map(dict.from_list)
-      |> result.map(c.DictValue)
-    }
-    c.Object(fields) -> fn(val) {
-      list.fold(fields, Ok([]), fn(result, f) {
-        case result, val |> dynamic.field(f.0, decode_value(f.1)) {
-          Ok(field_list), Ok(jval) -> Ok([#(f.0, jval), ..field_list])
-          Ok(_), Error(errs) | Error(errs), Ok(_) -> Error(errs)
-          Error(errs), Error(new_errs) -> Error(list.append(errs, new_errs))
+    c.String -> decode.string |> decode.map(c.StringValue)
+    c.Bool -> decode.bool |> decode.map(c.BoolValue)
+    c.Float -> decode.float |> decode.map(c.FloatValue)
+    c.Int -> decode.int |> decode.map(c.IntValue)
+    c.BitArray ->
+      decode.string
+      |> decode.then(fn(base64_str) {
+        let base64_data =
+          base64_str
+          |> bit_array.base64_url_decode
+
+        case base64_data {
+          Ok(bits) -> decode.success(c.BitArrayValue(bits))
+          Error(_) ->
+            decode.failure(c.NullValue, "Expected a base64 encoded BitArray")
         }
       })
-      |> result.map(list.reverse)
-      |> result.map(c.ObjectValue)
-    }
-    c.Optional(of) -> fn(val) {
-      val |> dynamic.optional(decode_value(of)) |> result.map(c.OptionalValue)
-    }
-    c.Result(res, err) -> fn(val) {
-      use type_val <- result.try(val |> dynamic.field("type", dynamic.string))
-
-      case type_val {
-        "ok" ->
-          val
-          |> dynamic.field("value", decode_value(res))
-          |> result.map(Ok)
-          |> result.map(c.ResultValue)
-        "error" ->
-          val
-          |> dynamic.field("value", decode_value(err))
-          |> result.map(Error)
-          |> result.map(c.ResultValue)
-        other ->
-          Error([dynamic.DecodeError("'ok' or 'error'", other, ["type"])])
-        // TODO : better path
-      }
-    }
-    c.Enum(variants) -> fn(val) {
-      use variant_name <- result.try(
-        val |> dynamic.field("variant", dynamic.string),
-      )
-      use variant_def <- result.try(
-        list.key_find(variants, variant_name)
-        |> result.replace_error([
-          dynamic.DecodeError(
-            "One of: "
-              <> variants |> list.map(fn(v) { v.0 }) |> string.join("/"),
-            variant_name,
-            ["variant"],
-          ),
-        ]),
-      )
-      use variant_value <- result.try(
-        val
-        |> dynamic.field("value", dynamic.dynamic)
-        |> result.then(decode_value(variant_def)),
-      )
-
-      Ok(c.EnumValue(variant_name, variant_value))
-    }
-    c.BitArray -> fn(val) {
-      val
-      |> dynamic.string()
-      |> result.then(fn(v) {
-        bit_array.base64_url_decode(v)
-        |> result.replace_error([dynamic.DecodeError("Base64Url", v, [])])
+    c.Dynamic -> decode.dynamic |> decode.map(c.DynamicValue)
+    c.List(el) -> decode.list(decoder(el)) |> decode.map(c.ListValue)
+    c.Dict(k, v) ->
+      decode.dict(decoder(k), decoder(v)) |> decode.map(c.DictValue)
+    c.Optional(of) ->
+      decode.optional(decoder(of)) |> decode.map(c.OptionalValue)
+    c.Object(fields) -> object_decoder(decode.success([]), fields)
+    c.Result(res, err) ->
+      decode.at(["type"], decode.string)
+      |> decode.then(fn(type_val) {
+        case type_val {
+          "ok" ->
+            decode.at(["value"], decoder(res))
+            |> decode.map(Ok)
+            |> decode.map(c.ResultValue)
+          "error" ->
+            decode.at(["value"], decoder(err))
+            |> decode.map(Error)
+            |> decode.map(c.ResultValue)
+          _other -> decode.failure(c.NullValue, "Type must be 'ok' or 'error'")
+        }
       })
-      |> result.map(c.BitArrayValue)
-    }
-    _ -> fn(_val) { Ok(c.NullValue) }
+    c.Enum(variants:) ->
+      decode.at(["variant"], decode.string)
+      |> decode.then(fn(variant_name) {
+        case list.key_find(variants, variant_name) {
+          Ok(variant_def) ->
+            decode.at(["value"], decoder(variant_def))
+            |> decode.map(fn(value) { c.EnumValue(variant_name, value) })
+          Error(_) ->
+            decode.failure(
+              c.NullValue,
+              "Variant must be one of: "
+                <> variants |> list.map(fn(v) { v.0 }) |> string.join("/"),
+            )
+        }
+      })
+    c.Null -> decode.success(c.NullValue)
+  }
+}
+
+fn object_decoder(
+  fields_decoder: decode.Decoder(List(#(String, c.GlitrValue))),
+  fields: List(#(String, c.GlitrType)),
+) -> decode.Decoder(c.GlitrValue) {
+  case fields {
+    [] ->
+      fields_decoder
+      |> decode.map(fn(fields) {
+        fields
+        |> list.reverse
+        |> c.ObjectValue
+      })
+    [#(name, of), ..rest] ->
+      fields_decoder
+      |> decode.then(fn(fields) {
+        use field_val <- decode.field(name, decoder(of))
+        decode.success([#(name, field_val), ..fields])
+      })
+      |> object_decoder(rest)
   }
 }
