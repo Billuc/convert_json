@@ -41,7 +41,7 @@ pub fn main() {
   // '{"name": "Anna", "age": 21}'
 
   "{\"name\": \"Bob\", \"age\": 36}"
-  |> json.decode(cjson.json_decode(converter))
+  |> cjson.json_decode(converter)
   |> io.debug
   // Ok(Person("Bob", 36))
 }

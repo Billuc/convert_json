@@ -16,7 +16,8 @@ pub fn simple_object_decode_test() {
       c.success(TestType(a, b))
     })
 
-  json.decode("{\"a\": \"Age\", \"b\": 28}", j.json_decode(test_converter))
+  "{\"a\": \"Age\", \"b\": 28}"
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(TestType("Age", 28))
 }
@@ -60,16 +61,14 @@ pub fn complex_type_decode_test() {
       c.success(ComplexType(first:, second:))
     })
 
-  json.decode(
-    "{
+  "{
     \"first\": [\"hello\", \"World\"],
     \"second\": {
         \"a\": \"foo\",
         \"b\": 55
       }  
-    }",
-    j.json_decode(test_converter),
-  )
+    }"
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(ComplexType(["hello", "World"], TestType("foo", 55)))
 }
@@ -179,33 +178,27 @@ pub fn enum_decode_test() {
       ],
     )
 
-  json.decode(
-    "{
+  "{
       \"variant\": \"VariantA\",
       \"value\": {\"msg\": \"foo\"}
-    }",
-    j.json_decode(test_converter),
-  )
+    }"
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(VariantA("foo"))
 
-  json.decode(
-    "{
+  "{
       \"variant\": \"VariantB\",
       \"value\": {\"msg\": \"bar\"}
-    }",
-    j.json_decode(test_converter),
-  )
+    }"
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(VariantB("bar"))
 
-  json.decode(
-    "{
+  "{
       \"variant\": \"VariantC\",
       \"value\": {\"age\": 21}
-    }",
-    j.json_decode(test_converter),
-  )
+    }"
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(VariantC(21))
 }
@@ -305,7 +298,8 @@ pub fn bit_array_encode_test() {
 }
 
 pub fn bit_array_decode_test() {
-  json.decode("\"aGVsbG8gd29ybGQ=\"", j.json_decode(c.bit_array()))
+  "\"aGVsbG8gd29ybGQ=\""
+  |> j.json_decode(c.bit_array())
   |> should.be_ok
   |> should.equal(<<"hello world":utf8>>)
 }
