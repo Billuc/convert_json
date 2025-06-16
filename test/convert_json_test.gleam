@@ -178,7 +178,7 @@ pub fn enum_decode_test() {
       ],
     )
 
-    "{
+  "{
       \"variant\": \"VariantA\",
       \"value\": {\"msg\": \"foo\"}
     }"
@@ -186,7 +186,7 @@ pub fn enum_decode_test() {
   |> should.be_ok
   |> should.equal(VariantA("foo"))
 
-    "{
+  "{
       \"variant\": \"VariantB\",
       \"value\": {\"msg\": \"bar\"}
     }"
@@ -194,11 +194,11 @@ pub fn enum_decode_test() {
   |> should.be_ok
   |> should.equal(VariantB("bar"))
 
-    "{
+  "{
       \"variant\": \"VariantC\",
       \"value\": {\"age\": 21}
     }"
-  |>     j.json_decode(test_converter)
+  |> j.json_decode(test_converter)
   |> should.be_ok
   |> should.equal(VariantC(21))
 }
